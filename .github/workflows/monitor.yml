@@ -1,5 +1,5 @@
 # .github/workflows/monitor.yml
-name: DTEK Power Monitor
+name: GV Power Monitor
 
 on:
   schedule:
