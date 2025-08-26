@@ -1,30 +1,31 @@
-# .github/workflows/monitor.yml
-name: GV Power Monitor
+name: Garden Village power outages monitor
 
 on:
   schedule:
-    # Запускається кожні 30 хвилин
-    - cron: '*/30 * * * *'
-  workflow_dispatch: # Дозволяє запускати вручну
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-        
-    - name: Install dependencies
-      run: npm install axios
-      
-    - name: Run monitoring script
-      env:
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      run: node monitor.js
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run monitoring script
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CITY: ${{ secrets.CITY }}
+          STREET: ${{ secrets.STREET }}
+          HOUSE: ${{ secrets.HOUSE }}
+        run: node monitor.js
