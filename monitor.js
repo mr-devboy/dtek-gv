@@ -1,54 +1,57 @@
-const axios = require("axios")
 require("dotenv").config()
+const { chromium } = require("playwright")
 
 const { TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, CITY, STREET, HOUSE } =
   process.env
 
 async function getInfo() {
-  console.log("🌀 Getting  info...")
+  console.log("🌀 Getting info...")
 
-  const requestData = new URLSearchParams()
-  requestData.append("method", "getHomeNum")
-  requestData.append("data[0][name]", "city")
-  requestData.append("data[0][value]", CITY)
-  requestData.append("data[1][name]", "street")
-  requestData.append("data[1][value]", STREET)
-  requestData.append("data[2][name]", "house_num")
-  requestData.append("data[2][value]", "")
-  requestData.append("data[3][name]", "updateFact")
-  requestData.append("data[3][value]", new Date().toLocaleString("uk-UA"))
+  const browser = await chromium.launch({ headless: true })
+  const browserContext = await browser.newContext()
+  const browserPage = await browserContext.newPage()
 
   try {
-    const { data } = await axios({
-      method: "POST",
-      url: "https://www.dtek-krem.com.ua/ua/ajax",
-      headers: {
-        accept: "application/json, text/javascript, */*; q=0.01",
-        "accept-language": "uk-UA,uk;q=0.9,en-US;q=0.8,en;q=0.7",
-        "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-        priority: "u=1, i",
-        "sec-ch-ua":
-          '"Not;A=Brand";v="99", "Google Chrome";v="139", "Chromium";v="139"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"macOS"',
-        "sec-fetch-dest": "empty",
-        "sec-fetch-mode": "cors",
-        "sec-fetch-site": "same-origin",
-        "x-csrf-token":
-          "36SIR0ku9NZ7poUClNAu_MbrMJUA_16PUlwINu32RW6o4OYEOheXvxHk_VrFumeynohY3zDIO9tkCHxmiIwjXg==",
-        "x-requested-with": "XMLHttpRequest",
-        cookie:
-          "Domain=dtek-krem.com.ua; _language=3eb69d58ec89e92ef3dafa6c5ddfe948ae4ccc42f3f8fc9cd1b9568ed22f10a3a%3A2%3A%7Bi%3A0%3Bs%3A9%3A%22_language%22%3Bi%3A1%3Bs%3A2%3A%22uk%22%3B%7D; visid_incap_2398465=KzLygby2TaOUJYO+p+teCQCvrGgAAAAAQUIPAAAAAACCwW7xqtasV0QyFL97OD7s; dtek-krem=5krtcje1tcs70bhci18cb3ppb5; incap_ses_788_2398465=80frASfjb3IfVX+H6onvCpXIrGgAAAAAX9+n/iyTPeGiHfgUeH5f3g==; _csrf-dtek-krem=8851710cc3d20d693bcd74fbca6077f9d9c31a453392d48338686084752f28f1a%3A2%3A%7Bi%3A0%3Bs%3A15%3A%22_csrf-dtek-krem%22%3Bi%3A1%3Bs%3A32%3A%22wDnCs9cijBxXQjINXchJ07eT6TtPezf0%22%3B%7D; incap_wrt_378=n8isaAAAAABVUMdHGgAI+gIQ4daOnI4BGMuTs8UGIAIoto+zxQYwA5fdOcsyaVrJhNrS44794qE=",
-        Referer: "https://www.dtek-krem.com.ua/ua/shutdowns",
-      },
-      data: requestData,
+    await browserPage.goto("https://www.dtek-krem.com.ua/ua/shutdowns", {
+      waitUntil: "networkidle",
     })
 
-    console.log("✅ Getting info finished.")
+    const csrfTokenTag = await browserPage.waitForSelector(
+      'meta[name="csrf-token"]',
+      { state: "attached" }
+    )
+    const csrfToken = await csrfTokenTag.getAttribute("content")
 
-    return data
+    const info = await browserPage.evaluate(
+      async ({ CITY, STREET, csrfToken }) => {
+        const formData = new URLSearchParams()
+        formData.append("method", "getHomeNum")
+        formData.append("data[0][name]", "city")
+        formData.append("data[0][value]", CITY)
+        formData.append("data[1][name]", "street")
+        formData.append("data[1][value]", STREET)
+        formData.append("data[2][name]", "updateFact")
+        formData.append("data[2][value]", new Date().toLocaleString("uk-UA"))
+
+        const response = await fetch("/ua/ajax", {
+          method: "POST",
+          headers: {
+            "x-requested-with": "XMLHttpRequest",
+            "x-csrf-token": csrfToken,
+          },
+          body: formData,
+        })
+        return await response.json()
+      },
+      { CITY, STREET, csrfToken }
+    )
+
+    console.log("✅ Getting info finished.")
+    return info
   } catch (error) {
-    throw Error(`❌ Getting info failed: ${error.message}.`)
+    throw Error(`❌ Getting info failed: ${error.message}`)
+  } finally {
+    await browser.close()
   }
 }
 
@@ -59,7 +62,7 @@ function checkOutage(info) {
     throw Error("❌ Power outage info missed.")
   }
 
-  const { sub_type, start_date, end_date, type } = data?.data?.[HOUSE] || {}
+  const { sub_type, start_date, end_date, type } = info?.data?.[HOUSE] || {}
   const isOutageDetected =
     sub_type !== "" || start_date !== "" || end_date !== "" || type !== ""
 
@@ -82,7 +85,8 @@ async function sendNotification(info) {
     end_date,
     sub_type_reason,
     updateTimestamp,
-  } = info.data[HOUSE]
+  } = info?.data?.[HOUSE] || {}
+
   const text =
     `⚡ <b>УВАГА! Інформація про відключення електроенергії</b>\n\n` +
     `🏠 <b>Тип:</b> ${type || "Не вказано"}\n` +
@@ -97,25 +101,30 @@ async function sendNotification(info) {
   console.log("🌀 Sending notification...")
 
   try {
-    await axios.post(
+    const res = await fetch(
       `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
       {
-        chat_id: TELEGRAM_CHAT_ID,
-        text,
-        parse_mode: "HTML",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: TELEGRAM_CHAT_ID,
+          text,
+          parse_mode: "HTML",
+        }),
       }
     )
 
+    const data = await res.json()
     console.log("🟢 Notification sent.", data)
   } catch (error) {
-    console.log("🔴 Notification not sent.", data)
+    console.log("🔴 Notification not sent.", error.message)
   }
 }
 
 async function run() {
   const info = await getInfo()
   const isOutage = checkOutage(info)
-  if (isOutage) sendNotification(info)
+  if (isOutage) await sendNotification(info)
 }
 
 run().catch((error) => console.error(error.message))
