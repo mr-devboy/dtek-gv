@@ -1,7 +1,7 @@
 {
-  "name": "dtek-gv",
+  "name": "dtek-monitor",
   "version": "1.0.0",
-  "description": "Garden Village power outages monitor",
+  "description": "DTEK power outages monitor",
   "main": "monitor.js",
   "dependencies": {
     "dotenv": "^17.2.1",
